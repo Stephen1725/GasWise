@@ -292,4 +292,62 @@
     )
 )
 
+;; ---------------------------------------------------------------------------------
+;; AI-Driven Dynamic Fee Calculation Feature (Main Feature)
+;; ---------------------------------------------------------------------------------
+
+;; This consolidated function acts as a smart router. It takes a user priority
+;; and automatically maps it to the best strategy, applying additional logic
+;; derived from historical trends.
+;;
+;; If the network is rapidly becoming congested (current fee > moving average),
+;; it boosts the balanced strategy slightly to ensure inclusion.
+;;
+;; Inputs:
+;; - priority-level: A user-defined priority (1=Low/Conservative, 2=Medium/Balanced, 3=High/Aggressive)
+;;
+;; Returns: 
+;; - (ok uint): The calculated optimal gas fee
+(define-read-only (calculate-dynamic-optimal-fee (priority-level uint))
+    (let
+        (
+            (base (var-get current-base-fee))
+            (cong (var-get current-congestion-level))
+            (avg (get-moving-average))
+            
+            ;; Detect trend: Is fee rising?
+            ;; If current base > avg, fees are rising.
+            (trend-rising (> base avg))
+        )
+        
+        ;; Select Strategy
+        (if (is-eq priority-level u1)
+            ;; Priority 1: Conservative
+            (calculate-conservative-fee base)
+            
+            (if (is-eq priority-level u2)
+                ;; Priority 2: Balanced + Trend Boost
+                (let
+                    (
+                        (raw-fee (unwrap-panic (calculate-balanced-fee base cong)))
+                        ;; If fees are rising, add 5% buffer to balanced strategy
+                        (final-fee (if trend-rising
+                                       (/ (* raw-fee u105) u100)
+                                       raw-fee))
+                    )
+                    (ok final-fee)
+                )
+                
+                (if (is-eq priority-level u3)
+                    ;; Priority 3: Aggressive
+                    (calculate-aggressive-fee base cong)
+                    
+                    ;; Default: Balanced
+                    (calculate-balanced-fee base cong)
+                )
+            )
+        )
+    )
+)
+
 
